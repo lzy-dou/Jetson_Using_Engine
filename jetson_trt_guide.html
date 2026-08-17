@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NVIDIA Jetson Orin TensorRT C++ 推理环境配置指南</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg2: #f5f7fa;
+  --ink: #1a1a2e;
+  --muted: #6b7280;
+  --rule: #e2e8f0;
+  --accent: #2563eb;
+  --accent2: #059669;
+  --code-bg: #1e293b;
+  --code-text: #e2e8f0;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.8;
+  font-size: 16px;
+}
+.container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+/* Cover */
+.cover { text-align: center; padding: 4rem 0 3rem; page-break-after: always; }
+.cover h1 { font-size: 2.8rem; font-weight: 800; margin-bottom: 0.5rem; color: var(--ink); }
+.cover h2 { font-size: 2rem; font-weight: 600; color: var(--accent); margin-bottom: 1rem; }
+.cover .subtitle { font-size: 1.2rem; color: var(--muted); margin-bottom: 2rem; }
+.cover .meta { font-size: 0.95rem; color: var(--muted); line-height: 2; }
+
+/* Headings */
+h2 { font-size: 1.8rem; font-weight: 700; margin-top: 3rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }
+h3 { font-size: 1.4rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.8rem; color: var(--accent); }
+h4 { font-size: 1.15rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+
+/* Paragraphs */
+p { margin-bottom: 1rem; }
+strong { color: var(--accent); font-weight: 600; }
+
+/* Lists */
+ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+li { margin-bottom: 0.4rem; }
+
+/* Code */
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 1rem 1.2rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+code {
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
+}
+pre code { background: none; padding: 0; }
+p code, li code {
+  background: var(--bg2);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+}
+th, td {
+  border: 1px solid var(--rule);
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+}
+th { background: var(--bg2); font-weight: 600; }
+tr:nth-child(even) { background: var(--bg2); }
+
+/* Callout */
+.callout {
+  background: #eff6ff;
+  border-left: 4px solid var(--accent);
+  padding: 1rem 1.2rem;
+  margin: 1rem 0;
+  border-radius: 0 4px 4px 0;
+}
+.callout-warn {
+  background: #fff7ed;
+  border-left-color: #f59e0b;
+}
+
+/* Page break */
+.page-break { page-break-before: always; }
+
+/* Footer */
+.footer { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--rule); text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+@media print {
+  .container { max-width: 100%; padding: 0 2rem; }
+  pre { white-space: pre-wrap; word-wrap: break-word; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Cover -->
+<div class="cover">
+  <h1>NVIDIA Jetson Orin</h1>
+  <h2>TensorRT C++ 推理环境配置指南</h2>
+  <p class="subtitle">从零搭建到成功推理的完整记录</p>
+  <div class="meta">
+    <p>硬件：Jetson Orin Nano</p>
+    <p>系统：Ubuntu 22.04 (Jammy)</p>
+    <p>JetPack：6.2 (r36.4) / CUDA 12.6</p>
+    <p>日期：2026-08-16</p>
+  </div>
+</div>
+
+<!-- 目录 -->
+<div class="page-break"></div>
+<h2>目录</h2>
+<ol>
+  <li>环境概述</li>
+  <li>问题一：libcudla.so.1 缺失（链接阶段）</li>
+  <li>问题二：CUDA 版本冲突（11.5 vs 12.6）</li>
+  <li>问题三：CUDA 工具包不完整</li>
+  <li>问题四：PyTorch 版本冲突（1.8 vs 2.5）</li>
+  <li>问题五：TensorRT 引擎序列化不兼容</li>
+  <li>问题六：动态 Shape 处理</li>
+  <li>最终环境配置总结</li>
+  <li>关键经验教训</li>
+</ol>
+
+<!-- 1. 环境概述 -->
+<div class="page-break"></div>
+<h2>1. 环境概述</h2>
+
+<h3>1.1 硬件与系统</h3>
+<p>目标平台为 NVIDIA Jetson Orin，运行 Ubuntu 22.04 (Jammy) 系统，搭载 JetPack 6.2 (r36.4)，对应 CUDA 12.6。目标是编译一个 C++ 程序，用于加载并运行 TensorRT 推理引擎（.engine 文件），模型为 YOLOv8n-cls 分类模型和 YOLOv8 检测模型。</p>
+
+<h3>1.2 问题总览</h3>
+<p>从 C++ 编译链接报错开始，逐步揭开了一连串环境配置问题，共涉及六个主要问题：</p>
+<table>
+  <tr><th>序号</th><th>问题</th><th>根因</th><th>解决方式</th></tr>
+  <tr><td>1</td><td>libcudla.so.1 缺失</td><td>CUDA 库包未安装</td><td>安装 cuda-libraries-12-6</td></tr>
+  <tr><td>2</td><td>CUDA 版本冲突</td><td>Ubuntu 11.5 与 JetPack 12.6 冲突</td><td>卸载 11.5，安装 12.6</td></tr>
+  <tr><td>3</td><td>CUDA 工具包不完整</td><td>卸载时连带头文件一起删除</td><td>逐个安装 CUDA 组件包</td></tr>
+  <tr><td>4</td><td>PyTorch 版本冲突</td><td>系统 1.8 太旧</td><td>安装 Jetson 官版 2.5 + 编译 torchvision</td></tr>
+  <tr><td>5</td><td>Engine 序列化不兼容</td><td>Python 与 C++ 库不兼容</td><td>用 C++ 从 ONNX 构建 engine</td></tr>
+  <tr><td>6</td><td>动态 Shape 处理</td><td>ONNX 输入为动态维度</td><td>添加 optimization profile</td></tr>
+</table>
+
+<!-- 2. libcudla.so.1 缺失 -->
+<div class="page-break"></div>
+<h2>2. 问题一：libcudla.so.1 缺失（链接阶段）</h2>
+
+<h3>2.1 现象</h3>
+<p>C++ 编译时，链接阶段报错：<code>libnvinfer.so</code> 依赖 <code>libcudla.so.1</code>，但系统中找不到该库。具体错误为 <code>undefined reference to cudlaCreateDevice@libcudla.so.1</code> 等一系列 <code>cudla*</code> 符号未定义。</p>
+
+<h3>2.2 根因分析</h3>
+<p>Jetson 平台上 DLA（Deep Learning Accelerator）相关的库有两个不同的 API：</p>
+<table>
+  <tr><th>库名</th><th>API 类型</th><th>符号前缀</th><th>来源</th></tr>
+  <tr><td>libnvcudla.so</td><td>DLA Driver API</td><td>cudlaDrv*</td><td>Tegra BSP（系统自带）</td></tr>
+  <tr><td>libcudla.so.1</td><td>cuDLA Runtime API</td><td>cudla*</td><td>CUDA Toolkit（需安装）</td></tr>
+</table>
+<p>TensorRT 10.3 的 <code>libnvinfer.so</code> 依赖的是 <strong>cuDLA Runtime API</strong>（<code>cudla*</code> 符号），但系统只安装了 <strong>DLA Driver API</strong>（<code>cudlaDrv*</code> 符号）。两者符号完全不同，不能互相替换。</p>
+
+<h3>2.3 尝试过的失败方案</h3>
+<ul>
+  <li><strong>方案一</strong>：创建软链接 <code>libcudla.so.1 -> libcuda.so.1</code>。失败，因为 <code>libcuda.so</code> 导出的是 <code>cu*</code> 前缀的 CUDA Driver API 符号，与 <code>cudla*</code> 完全不同。</li>
+  <li><strong>方案二</strong>：创建软链接 <code>libcudla.so.1 -> libnvcudla.so</code>。失败，因为虽然指向了 DLA 库，但符号前缀不匹配（<code>cudla*</code> vs <code>cudlaDrv*</code>）。</li>
+  <li><strong>方案三</strong>：用 <code>patchelf</code> 修改 <code>libnvcudla.so</code> 的 SONAME 为 <code>libcudla.so.1</code>。<code>ldconfig</code> 能识别了，但链接时仍然报 <code>undefined reference</code>，因为符号根本不存在。</li>
+</ul>
+
+<h3>2.4 最终解决方案</h3>
+<p>安装 JetPack 仓库的 <code>cuda-libraries-12-6</code> 包，其中包含 <code>libcudla-12-6</code> 子包，提供了正确的 cuDLA Runtime API（<code>cudla*</code> 符号）：</p>
+<pre><code>sudo apt install cuda-libraries-12-6</code></pre>
+<p>安装后验证：</p>
+<pre><code>ls /usr/local/cuda-12.6/targets/aarch64-linux/lib/ | grep cudla
+# 应输出: libcudla.so  libcudla.so.1  libcudla.so.1.0.0
+
+ldconfig -p | grep cudla
+# 应输出: libcudla.so.1 => /usr/local/cuda/targets/aarch64-linux/lib/libcudla.so.1
+
+nm -D /usr/local/cuda-12.6/targets/aarch64-linux/lib/libcudla.so.1 | grep cudla
+# 应输出: cudlaCreateDevice  cudlaDestroyDevice  cudlaModuleLoadFromMemory 等</code></pre>
+
+<div class="callout">
+  <strong>关键认知：</strong>libnvcudla.so 和 libcudla.so 是两个完全不同的库，虽然都与 DLA 相关，但 API 不同、符号不同、用途不同。不能通过软链接或修改 SONAME 的方式互相替代。必须安装正确的包来获取所需的 API。
+</div>
+
+<!-- 3. CUDA 版本冲突 -->
+<div class="page-break"></div>
+<h2>3. 问题二：CUDA 版本冲突（11.5 vs 12.6）</h2>
+
+<h3>3.1 现象</h3>
+<p>执行 <code>sudo apt install nvidia-jetpack</code> 时报依赖冲突错误：<code>nvidia-jetpack-dev 依赖 nvidia-cuda-dev (= 6.2.1+b38) 但是 11.5.1-1ubuntu1 正要被安装</code>。</p>
+
+<h3>3.2 根因分析</h3>
+<p>系统配置了两个 CUDA 软件源，版本完全不兼容：</p>
+<table>
+  <tr><th>来源</th><th>包名</th><th>CUDA 版本</th><th>含 libcudla.so</th></tr>
+  <tr><td>Ubuntu Tsinghua 镜像 (jammy)</td><td>nvidia-cuda-toolkit</td><td>11.5</td><td>否（桌面版）</td></tr>
+  <tr><td>NVIDIA JetPack 仓库 (r36.4)</td><td>nvidia-cuda</td><td>12.6</td><td>是（Jetson 版）</td></tr>
+</table>
+<p>硬件是 Jetson Orin (t234) + JetPack 6.2 (r36.4)，正确对应的是 CUDA 12.6，不是 11.5。Ubuntu 仓库的桌面版 CUDA 包根本不包含 Jetson 专有的 DLA 库。</p>
+
+<h3>3.3 解决方案</h3>
+
+<h4>第一步：卸载 Ubuntu 仓库的 CUDA 11.5 包</h4>
+<pre><code>sudo apt remove --purge nvidia-cuda-toolkit nvidia-cuda-dev \
+  nvidia-cuda-gdb nvidia-cuda-toolkit-doc nvidia-cuda-toolkit-gcc
+sudo apt autoremove --purge</code></pre>
+
+<h4>第二步：解决 nvidia-container 版本冲突</h4>
+<pre><code># 降级 container 包到 JetPack 要求版本
+sudo apt install \
+  nvidia-container-toolkit-base=1.16.2-1 \
+  libnvidia-container-tools=1.16.2-1 \
+  nvidia-container-toolkit=1.16.2-1 \
+  libnvidia-container1=1.16.2-1</code></pre>
+
+<h4>第三步：安装 JetPack 的 CUDA 12.6</h4>
+<pre><code>sudo apt install nvidia-jetpack</code></pre>
+
+<h3>3.4 长期防范</h3>
+<p>为避免 Ubuntu 仓库的 CUDA 包再次干扰 JetPack 包，创建 apt pin 配置：</p>
+<pre><code>sudo tee /etc/apt/preferences.d/block-ubuntu-cuda &lt;&lt;'EOF'
+Package: nvidia-cuda-toolkit nvidia-cuda-dev nvidia-cuda-gdb \
+  nvidia-cuda-toolkit-doc nvidia-cuda-toolkit-gcc
+Pin: release o=Ubuntu
+Pin-Priority: -1
+EOF
+sudo apt update</code></pre>
+
+<!-- 4. CUDA 工具包不完整 -->
+<div class="page-break"></div>
+<h2>4. 问题三：CUDA 工具包不完整</h2>
+
+<h3>4.1 现象</h3>
+<p>卸载 Ubuntu 版 CUDA 11.5 后，CMake 报错找不到 CUDA（缺 <code>nvcc</code>、头文件、<code>cudart</code> 库等），需要逐个安装缺失的组件。</p>
+
+<h3>4.2 需要安装的 CUDA 组件清单</h3>
+<p>以下是按顺序遇到并安装的所有 CUDA 组件，每个组件解决了特定的错误：</p>
+<table>
+  <tr><th>包名</th><th>版本</th><th>解决的问题</th></tr>
+  <tr><td>cuda-cudart-dev-12-6</td><td>12.6.68</td><td>CMake 找不到 CUDA（缺头文件 cuda_runtime.h 和 libcudart.so）</td></tr>
+  <tr><td>cuda-nvcc-12-6</td><td>12.6.68</td><td>CMake 报 CUDA_NVCC_EXECUTABLE 缺失（缺 nvcc 编译器）</td></tr>
+  <tr><td>cuda-nvtx-12-6</td><td>12.6.68</td><td>PyTorch 导入报 libnvToolsExt.so.1 not found</td></tr>
+  <tr><td>cuda-cupti-12-6</td><td>12.6.68</td><td>PyTorch 导入报 libcupti.so.12 not found</td></tr>
+  <tr><td>cuda-libraries-dev-12-6</td><td>12.6.11</td><td>torchvision 编译报 cusparse.h 没有那个文件或目录</td></tr>
+  <tr><td>cuda-libraries-12-6</td><td>12.6.11</td><td>提供 libcudla.so.1（含 cudla* 符号）</td></tr>
+</table>
+
+<p>此外还需要单独安装 cuSPARSELt（不在 CUDA 主包中）：</p>
+<pre><code>cd ~
+wget https://developer.download.nvidia.com/compute/cusparselt/0.8.1/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb
+sudo dpkg -i cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb
+sudo cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.8.1/cusparselt-*-keyring.gpg /usr/share/keyrings/
+sudo apt update
+sudo apt install cusparselt cusparselt-cuda-12</code></pre>
+
+<h3>4.3 验证 CUDA 完整性</h3>
+<pre><code># 确认所有关键文件存在
+ls /usr/local/cuda-12.6/bin/nvcc
+ls /usr/local/cuda-12.6/targets/aarch64-linux/include/cuda_runtime.h
+ls /usr/local/cuda-12.6/targets/aarch64-linux/include/cusparse.h
+ls /usr/local/cuda-12.6/targets/aarch64-linux/lib/libcudart.so
+ls /usr/local/cuda-12.6/targets/aarch64-linux/lib/libcudla.so.1
+ls /usr/local/cuda-12.6/targets/aarch64-linux/lib/libnvToolsExt.so.1
+ls /usr/local/cuda-12.6/targets/aarch64-linux/lib/libcupti.so.12</code></pre>
+
+<!-- 5. PyTorch 版本冲突 -->
+<div class="page-break"></div>
+<h2>5. 问题四：PyTorch 版本冲突（1.8 vs 2.5）</h2>
+
+<h3>5.1 现象</h3>
+<p>加载 <code>.pt</code> 模型时报错：<code>AttributeError: Can't get attribute 'InterpolationMode' on &lt;module 'torchvision.transforms.functional'&gt;</code>。</p>
+
+<h3>5.2 根因分析</h3>
+<p>系统通过 apt 安装的是 PyTorch 1.8.0a0（包名 <code>libtorch1.8</code>），太旧。YOLOv8 需要的 <code>ultralytics</code> 要求 PyTorch 1.8 以上且 torchvision 0.9.0 以上。旧版 torchvision 0.8.0a0 缺少 <code>InterpolationMode</code> 类。</p>
+
+<h3>5.3 解决方案</h3>
+
+<h4>5.3.1 卸载旧版 PyTorch</h4>
+<pre><code>sudo apt remove --purge libtorch-dev libtorch-test libtorch1.8:arm64
+sudo apt autoremove --purge</code></pre>
+
+<h4>5.3.2 安装 NVIDIA Jetson 官版 PyTorch 2.5</h4>
+<p>Jetson 上的 PyTorch 必须使用 NVIDIA 官方编译的 wheel，不能用 pip 装标准版（标准版不带 Jetson 的 CUDA 支持）：</p>
+<pre><code>pip3 install https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl</code></pre>
+
+<h4>5.3.3 设置环境变量</h4>
+<p>PyTorch 需要找到 CUDA 库，必须设置 <code>LD_LIBRARY_PATH</code>：</p>
+<pre><code>export LD_LIBRARY_PATH=/usr/local/cuda-12.6/targets/aarch64-linux/lib:$LD_LIBRARY_PATH
+
+# 写入 bashrc 永久生效
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.6/targets/aarch64-linux/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc</code></pre>
+
+<h4>5.3.4 从源码编译 torchvision 0.20.0</h4>
+<p>Jetson 上没有 torchvision 的预编译 wheel，必须从源码编译：</p>
+<pre><code># 安装编译依赖
+sudo apt install -y libjpeg-dev libpng-dev libavcodec-dev libavformat-dev libswscale-dev
+
+# 下载源码
+cd ~
+git clone https://github.com/pytorch/vision
+cd vision
+git checkout v0.20.0
+
+# 设置编译环境变量
+export BUILD_VERSION=0.20.0
+export TORCH_CUDA_ARCH_LIST="8.7"
+export FORCE_CUDA=1
+export CUDA_HOME=/usr/local/cuda
+export MAX_JOBS=2  # 限制并发数防止内存不足
+
+# 编译安装
+python3 setup.py install --user
+
+# 验证
+python3 -c "import torch; import torchvision; print('torch:', torch.__version__, 'torchvision:', torchvision.__version__)"</code></pre>
+
+<h4>5.3.5 降级 numpy</h4>
+<p>PyTorch 2.5 需要 numpy 1.x，不兼容 numpy 2.x：</p>
+<pre><code>pip3 install "numpy&lt;2" --force-reinstall</code></pre>
+
+<h3>5.4 遇到的编译错误及解决</h3>
+<table>
+  <tr><th>错误信息</th><th>解决方案</th></tr>
+  <tr><td>libnvToolsExt.so.1 not found</td><td>安装 cuda-nvtx-12-6</td></tr>
+  <tr><td>libcupti.so.12 not found</td><td>安装 cuda-cupti-12-6</td></tr>
+  <tr><td>libcusparseLt.so.0 not found</td><td>安装 cuSPARSELt 0.8.1</td></tr>
+  <tr><td>cusparse.h 没有那个文件或目录</td><td>安装 cuda-libraries-dev-12-6</td></tr>
+  <tr><td>ImportError: cannot import name '_get_function_stack_at'</td><td>卸载残留的 libtorch1.8 系统包</td></tr>
+  <tr><td>operator torchvision::nms does not exist</td><td>在 ~/vision 目录外运行 Python（源码目录遮蔽安装版本）</td></tr>
+</table>
+
+<!-- 6. Engine 序列化不兼容 -->
+<div class="page-break"></div>
+<h2>6. 问题五：TensorRT 引擎序列化不兼容</h2>
+
+<h3>6.1 现象</h3>
+<p>Python 成功导出 <code>.engine</code> 文件后，C++ 加载时报错：<code>Serialization assertion plan->header.magicTag == rt::kPLAN_MAGIC_TAG failed. Trying to load an engine created with incompatible serialization version.</code></p>
+
+<h3>6.2 根因分析</h3>
+<p>Python 使用的 <code>tensorrt</code> 模块和 C++ 链接的 <code>libnvinfer.so</code> 虽然版本号都是 10.3.0，但内部序列化格式不兼容。可能原因：</p>
+<ul>
+  <li>Python 的 <code>tensorrt</code> 包编译时的配置和系统 <code>libnvinfer-dev</code> 不同</li>
+  <li>或者 <code>ultralytics</code> 内部调用了不同的 TensorRT API 版本</li>
+</ul>
+
+<h3>6.3 验证过程</h3>
+<pre><code># 确认 Python tensorrt 来源
+python3 -c "import tensorrt as trt; print(trt.__file__)"
+# 输出: /usr/lib/python3.10/dist-packages/tensorrt/__init__.py
+
+# 确认版本一致
+python3 -c "import tensorrt; print(tensorrt.__version__)"  # 10.3.0
+dpkg -l | grep libnvinfer  # 10.3.0.30-1+cuda12.5
+
+# 即使来源和版本都一致，C++ 仍然无法加载 Python 导出的 engine</code></pre>
+
+<h3>6.4 解决方案：用 C++ 从 ONNX 构建 Engine</h3>
+<p>编写一个 C++ 工具 <code>build_engine</code>，直接从 ONNX 文件构建 TensorRT 引擎。因为 <code>build_engine</code> 和 <code>trt_infer</code> 链接的是同一个 <code>libnvinfer.so</code>，序列化格式 100% 兼容。</p>
+
+<h4>6.4.1 build_engine.cpp 核心代码</h4>
+<pre><code>// 1. 创建 builder 和 network
+nvinfer1::IBuilder* builder = nvinfer1::createInferRuntime(logger);
+auto network = builder->createNetworkV2(
+    1U &lt;&lt; static_cast&lt;uint32_t&gt;(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
+
+// 2. 解析 ONNX
+auto parser = nvonnxparser::createParser(*network, logger);
+parser->parseFromFile(onnx_path, severity);
+
+// 3. 配置 builder
+auto config = builder->createBuilderConfig();
+config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, 2ULL &lt;&lt; 30);
+if (use_fp16 && builder->platformHasFastFp16()) {
+    config->setFlag(nvinfer1::BuilderFlag::kFP16);
+}
+
+// 4. 构建并保存
+auto serialized = builder->buildSerializedNetwork(*network, *config);
+std::ofstream file(engine_path, std::ios::binary);
+file.write(reinterpret_cast&lt;const char*&gt;(serialized->data()), serialized->size());</code></pre>
+
+<h4>6.4.2 使用方式</h4>
+<pre><code>./build_engine input.onnx output.engine fp16</code></pre>
+
+<div class="callout">
+  <strong>关键认知：</strong>在 Jetson 上，Python 导出的 engine 和 C++ 加载的 engine 可能不兼容，即使版本号相同。最可靠的方式是用 C++ 从 ONNX 直接构建 engine，确保构建和推理使用同一个库。
+</div>
+
+<!-- 7. 动态 Shape 处理 -->
+<div class="page-break"></div>
+<h2>7. 问题六：动态 Shape 处理</h2>
+
+<h3>7.1 现象</h3>
+<p>ONNX 模型的输入 shape 是动态的 <code>[-1, 3, -1, -1]</code>（batch、高度、宽度都可变），导致两个问题：</p>
+<ul>
+  <li>构建 engine 时报错：<code>Network has dynamic or shape inputs, but no optimization profile has been defined</code></li>
+  <li>推理时 <code>input_size</code> 计算为 -1，分配超大 vector 导致崩溃：<code>cannot create std::vector larger than max_size</code></li>
+</ul>
+
+<h3>7.2 解决方案</h3>
+
+<h4>7.2.1 build_engine.cpp：添加 Optimization Profile</h4>
+<p>为动态输入定义 min/opt/max 尺寸范围：</p>
+<pre><code>nvinfer1::IOptimizationProfile* profile = builder->createOptimizationProfile();
+
+// 检测动态维度
+bool is_dynamic = false;
+for (int j = 0; j &lt; dims.nbDims; j++) {
+    if (dims.d[j] == -1) { is_dynamic = true; break; }
+}
+
+if (is_dynamic) {
+    nvinfer1::Dims d_min(dims), d_opt(dims), d_max(dims);
+    d_min.d[0] = 1; d_opt.d[0] = 1; d_max.d[0] = 1;
+    d_min.d[2] = 320; d_min.d[3] = 320;   // 最小尺寸
+    d_opt.d[2] = 640; d_opt.d[3] = 640;   // 最优尺寸
+    d_max.d[2] = 960; d_max.d[3] = 960;   // 最大尺寸
+
+    profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, d_min);
+    profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, d_opt);
+    profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, d_max);
+}
+config->addOptimizationProfile(profile);</code></pre>
+
+<h4>7.2.2 trt_infer.cpp：推理前设置实际输入尺寸</h4>
+<p>推理前必须调用 <code>setInputShape()</code> 设置实际输入尺寸，否则输出 shape 仍为 -1：</p>
+<pre><code>// 设置实际输入尺寸
+nvinfer1::Dims actual_input_dims = input_dims;
+actual_input_dims.d[0] = 1;
+actual_input_dims.d[1] = 3;
+actual_input_dims.d[2] = INPUT_SIZE;  // 640
+actual_input_dims.d[3] = INPUT_SIZE;  // 640
+context->setInputShape(input_name.c_str(), actual_input_dims);
+
+// 设置后获取实际输出 shape
+output_dims = context->getTensorShape(output_name.c_str());
+
+// 根据实际尺寸分配缓冲区
+input_size = 1 * 3 * INPUT_SIZE * INPUT_SIZE;
+output_size = 1;
+for (int j = 0; j &lt; output_dims.nbDims; j++) output_size *= output_dims.d[j];
+
+cudaMalloc(&amp;d_input, input_size * sizeof(float));
+cudaMalloc(&amp;d_output, output_size * sizeof(float));</code></pre>
+
+<h3>7.3 输入尺寸注意事项</h3>
+<p>Engine 导出时输入尺寸就固定了。如果导出时是 64x64，推理时必须用 64x64。要改输入大小必须重新导出 engine。动态 shape 的 engine 支持范围内任意尺寸（必须是 32 的整数倍），但每次推理前必须调用 <code>setInputShape()</code> 设置实际尺寸。</p>
+
+<!-- 8. 最终环境配置 -->
+<div class="page-break"></div>
+<h2>8. 最终环境配置总结</h2>
+
+<h3>8.1 软件版本</h3>
+<table>
+  <tr><th>组件</th><th>版本</th><th>来源</th></tr>
+  <tr><td>JetPack</td><td>6.2 (r36.4)</td><td>NVIDIA Jetson 仓库</td></tr>
+  <tr><td>CUDA</td><td>12.6.68</td><td>NVIDIA Jetson 仓库</td></tr>
+  <tr><td>cuDNN</td><td>系统自带</td><td>JetPack 6.2</td></tr>
+  <tr><td>TensorRT</td><td>10.3.0.30</td><td>NVIDIA Jetson 仓库</td></tr>
+  <tr><td>PyTorch</td><td>2.5.0a0+872d972e41.nv24.08</td><td>NVIDIA Jetson 官版 wheel</td></tr>
+  <tr><td>TorchVision</td><td>0.20.0</td><td>源码编译</td></tr>
+  <tr><td>OpenCV</td><td>4.8.0</td><td>系统自带</td></tr>
+  <tr><td>cuSPARSELt</td><td>0.8.1</td><td>NVIDIA 官方 deb 包</td></tr>
+  <tr><td>NumPy</td><td>1.26.4</td><td>pip 安装</td></tr>
+</table>
+
+<h3>8.2 完整安装命令序列</h3>
+<pre><code># ===== 第一步：清理冲突包 =====
+sudo apt remove --purge nvidia-cuda-toolkit nvidia-cuda-dev \
+  nvidia-cuda-gdb nvidia-cuda-toolkit-doc nvidia-cuda-toolkit-gcc
+sudo apt remove --purge libtorch-dev libtorch-test libtorch1.8:arm64
+sudo apt autoremove --purge
+
+# ===== 第二步：安装 CUDA 12.6 组件 =====
+sudo apt install cuda-cudart-dev-12-6 cuda-nvcc-12-6 \
+  cuda-nvtx-12-6 cuda-cupti-12-6 cuda-libraries-dev-12-6 \
+  cuda-libraries-12-6
+
+# ===== 第三步：安装 cuSPARSELt =====
+wget https://developer.download.nvidia.com/compute/cusparselt/0.8.1/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb
+sudo dpkg -i cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb
+sudo cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.8.1/cusparselt-*-keyring.gpg /usr/share/keyrings/
+sudo apt update
+sudo apt install cusparselt cusparselt-cuda-12
+
+# ===== 第四步：安装 PyTorch 2.5 =====
+pip3 install https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl
+pip3 install "numpy&lt;2" --force-reinstall
+
+# ===== 第五步：编译 torchvision 0.20.0 =====
+sudo apt install -y libjpeg-dev libpng-dev libavcodec-dev libavformat-dev libswscale-dev
+cd ~ && git clone https://github.com/pytorch/vision && cd vision && git checkout v0.20.0
+export BUILD_VERSION=0.20.0 TORCH_CUDA_ARCH_LIST="8.7" FORCE_CUDA=1 CUDA_HOME=/usr/local/cuda MAX_JOBS=2
+python3 setup.py install --user
+
+# ===== 第六步：设置环境变量 =====
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.6/targets/aarch64-linux/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+
+# ===== 第七步：安装 TensorRT 开发包 =====
+sudo apt install tensorrt-dev libnvonnxparsers-dev
+
+# ===== 第八步：CMake 编译 =====
+cd ~/code-main/chapter4/YoloLearn/Engine_cpp/build
+rm -rf *
+cmake -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-12.6 ..
+make -j$(nproc)
+
+# 从 ONNX 构建 engine
+./build_engine input.onnx output.engine fp16
+
+# 运行推理
+./trt_infer</code></pre>
+
+<!-- 9. 关键经验教训 -->
+<div class="page-break"></div>
+<h2>9. 关键经验教训</h2>
+
+<h3>9.1 只用 JetPack 仓库的包</h3>
+<p>Jetson 平台只能使用 JetPack 仓库 (r36.4) 的包，不能使用 Ubuntu 仓库的桌面版包。两者虽然版本号可能接近，但库的符号、ABI、序列化格式都可能不同，混装必然出问题。特别是 CUDA 包，Ubuntu 版不含 Jetson 专有的 DLA 库。</p>
+
+<h3>9.2 libcudla.so vs libnvcudla.so</h3>
+<p>这是两个完全不同的库：<code>libnvcudla.so</code> 是 DLA Driver API（<code>cudlaDrv*</code> 符号），<code>libcudla.so.1</code> 是 cuDLA Runtime API（<code>cudla*</code> 符号）。TensorRT 需要 Runtime API。不能通过软链接或 patchelf 互相替代，必须安装正确的包（<code>cuda-libraries-12-6</code> 中的 <code>libcudla-12-6</code>）。</p>
+
+<h3>9.3 PyTorch 必须用 Jetson 官版</h3>
+<p>标准版 <code>pip install torch</code> 不带 Jetson 的 CUDA 支持。必须从 NVIDIA 官方下载 Jetson 专用 wheel。<code>torchvision</code> 没有预编译版本，必须从源码编译，编译时设置 <code>TORCH_CUDA_ARCH_LIST="8.7"</code>（Orin 的计算能力）。</p>
+
+<h3>9.4 Engine 构建和加载必须用同一个库</h3>
+<p>Python 导出的 engine 和 C++ 加载的 engine 可能不兼容，即使版本号相同。最可靠的方式是用 C++ 从 ONNX 直接构建 engine，确保构建和推理使用同一个 <code>libnvinfer.so</code>。</p>
+
+<h3>9.5 动态 Shape 需要额外处理</h3>
+<p>ONNX 导出时如果使用 <code>dynamic=True</code>，输入 shape 会是 <code>[-1, 3, -1, -1]</code>。TensorRT 构建时需要定义 optimization profile（min/opt/max 尺寸），推理时需要调用 <code>setInputShape()</code> 设置实际尺寸。如果不需要动态输入，导出 ONNX 时设置 <code>dynamic=False</code> 可以避免这些问题。</p>
+
+<h3>9.6 排查问题的通用方法</h3>
+<ul>
+  <li>用 <code>nm -D</code> 检查库导出的符号</li>
+  <li>用 <code>readelf -d</code> 检查 SONAME</li>
+  <li>用 <code>ldd</code> 检查库的依赖是否解析</li>
+  <li>用 <code>ldconfig -p</code> 检查库是否在缓存中</li>
+  <li>用 <code>apt-cache policy</code> 检查包来源和版本</li>
+  <li>用 <code>dpkg -L</code> 检查包安装了哪些文件</li>
+  <li>用 <code>find</code> 全局搜索文件位置</li>
+</ul>
+
+<div class="footer">
+  <p>NVIDIA Jetson Orin TensorRT C++ 推理环境配置指南 | 2026-08-16</p>
+</div>
+
+</div>
+</body>
+</html>
