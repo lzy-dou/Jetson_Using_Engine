@@ -18,8 +18,11 @@ python export_onnx.py
 
 # 2.. 编译
  cd chapter6/YoloLearn/Engine_cpp
+ 
  mkdir -p build
+ 
  cd build
+ 
  cmake -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-12.6 ..
 
 # 3. 从 ONNX 构建 engine
