@@ -11,7 +11,9 @@ using belike（chapter6）：
 
 # 1.导出ONNX模型
 cd chapter6
-python yolo_train.py
+
+python yolo_train.py #训练
+
 python export_onnx.py
 
 # 2.. 编译
