@@ -7,17 +7,17 @@
 ！数据集与创作模仿来自https://github.com/vision-adas/code，如有侵权请联系删除：1810775525@qq.com  |
 ----------------------------------------------------------------------------------------------|
 
-using belike（chapter6）：
+using belike（chapter5）：
 
 # 1.导出ONNX模型
-cd chapter6
+cd chapter5
 
 python yolo_train.py #训练
 
 python export_onnx.py
 
 # 2.. 编译
- cd chapter6/YoloLearn/Engine_cpp
+ cd chapter5/YoloLearn/Engine_cpp
  
  mkdir -p build
  
@@ -27,8 +27,8 @@ python export_onnx.py
 
 # 3. 从 ONNX 构建 engine
 ./build_engine \
-    /home/nvidia/code-main/chapter6/YoloLearn/runs/depth/train/weights/best.onnx \
-    /home/nvidia/code-main/chapter6/YoloLearn/runs/depth/train/weights/best.engine \
+    /home/nvidia/code-main/chapter5/YoloLearn/runs/depth/train/weights/best.onnx \
+    /home/nvidia/code-main/chapter5/YoloLearn/runs/depth/train/weights/best.engine \
     fp16
 
 ./trt_infer
